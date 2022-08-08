@@ -23,24 +23,23 @@ def broadcast_thread():
     asyncio.get_event_loop().run_forever()
 
 
-def leave(userID):
+def leave(userID, fileID):
     print('用户{}连接已断开'.format(userID))
     data = {
         'operation': 'leave',
         'userID': userID,
-        'fileID': 0,
+        'fileID': fileID,
     }
-    for fileID in FILES:
-        if userID in FILES[fileID]: # 用户参与了这个文件的编辑
-            FILES[fileID].pop(userID)
-            data['fileID'] = fileID
-            connections = set(FILES[fileID].values())
-            websockets.broadcast(connections, json.dumps(data))
+    message = json.dumps(data)
+    FILES[fileID].pop(userID)
+    connections = set(FILES[fileID].values())
+    websockets.broadcast(connections, message)
 
 
 async def unknown(websocket):
     await websocket.send(json.dumps({'result': 0, 'message': '正在连接...'}))
     myID = -1
+    fileID = -1
     async for message in websocket:
         print("接收到: "+message)
         data = json.loads(message)
@@ -54,7 +53,7 @@ async def unknown(websocket):
             dic = FILES[fileID]
             FILES[fileID][userID] = websocket
         elif data['operation'] == 'leave':  # 断开连接
-            leave(userID)
+            leave(userID, fileID)
         data['timestamp'] = str(time.time())
         message = json.dumps(data)
         dic = FILES[data['fileID']]
@@ -66,7 +65,7 @@ async def unknown(websocket):
         # if len(dic.values()) > 0:
         #     print("向{}个用户发起转发".format(len(dic.values())))
         #     await asyncio.wait([ws.send(message) for ws in dic.values()])
-    leave(myID)
+    leave(myID, fileID)
 
 
 broadcast_thread()
