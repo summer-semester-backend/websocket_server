@@ -5,6 +5,7 @@ import json
 import threading
 import websockets
 import asyncio
+import time
 
 FILES = {}
 
@@ -49,6 +50,9 @@ async def unknown(websocket):
             dic = FILES[fileID]
             broad = {'result': 0, 'message': '用户' + str(userID) + "已离开"}
             FILES[fileID].pop(userID)
+        data['timestamp'] = str(time.time())
+        message = json.dumps(data)
+        dic = FILES[data['fileID']]
         for that_userID in dic:
             if that_userID != data['userID']:
                 await dic[that_userID].send(message)
