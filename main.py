@@ -55,7 +55,11 @@ async def unknown(websocket):
         dic = FILES[data['fileID']]
         for that_userID in dic:
             if that_userID != data['userID']:
-                await dic[that_userID].send(message)
+                # if dic[that_userID]
+                try:
+                    await dic[that_userID].send(message)
+                except:
+                    del dic[that_userID]
         # if len(dic.values()) > 0:
         #     print("向{}个用户发起转发".format(len(dic.values())))
         #     await asyncio.wait([ws.send(message) for ws in dic.values()])
