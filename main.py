@@ -3,6 +3,8 @@ import json
 
 # from django.shortcuts import render
 import threading
+from datetime import datetime
+
 import websockets
 import websockets.exceptions
 import asyncio
@@ -11,16 +13,17 @@ import time, traceback
 FILES = {}
 
 
-def broadcast_thread():
+async def broadcast_thread():
     print("?????????????????????????")
-    # loop = asyncio.new_event_loop()
-    # asyncio.set_event_loop(loop)
-    # start_server = websockets.serve(unknown, '127.0.0.1', 8001)
+    heartbeat_task = heartbeat()
+    asyncio.create_task(heartbeat_task)
+    async with websockets.serve(unknown, "0.0.0.0", 8001):
+        await asyncio.Future()
+    # asyncio.create_task(start_server)
     # asyncio.get_event_loop().run_until_complete(start_server)
     # asyncio.get_event_loop().run_forever()
-    start_server = websockets.serve(unknown, "0.0.0.0", 8001)
-    asyncio.get_event_loop().run_until_complete(start_server)
-    asyncio.get_event_loop().run_forever()
+    await heartbeat_task
+    # await start_server
 
 
 def leave(userID, fileID):
@@ -67,7 +70,7 @@ async def unknown(websocket):
                 if that_userID != userID:
                     try:
                         await dic[that_userID].send(message)
-                    except websockets.exceptions.ConnectionClosed:
+                    except websockets.exceptions.ConnectionClosed as e:
                         print(e)
     except Exception as e:
         print(e)
@@ -76,4 +79,18 @@ async def unknown(websocket):
         leave(userID, fileID) # 连接关闭时自动向所有编辑同一文件的用户发送leave消息
 
 
-broadcast_thread()
+async def heartbeat():
+    while True:
+        ws_set = set()
+        for file in FILES.values():
+            for ws in file.values():
+                ws_set.add(ws)
+        message = json.dumps({'operation': 'heartbeat', 'timestamp': str(time.time())})
+        websockets.broadcast(ws_set, message)
+        t = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        print("{}: 时间戳已广播到{}个客户端".format(t, len(ws_set)))
+        await asyncio.sleep(10)
+
+
+asyncio.run(broadcast_thread())
+# await heartbeat_task
