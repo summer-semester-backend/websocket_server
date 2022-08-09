@@ -37,8 +37,9 @@ def leave(userID, fileID):
     message = json.dumps(data)
     if userID != -1:
         FILES[fileID].pop(userID)
-    connections = set(FILES[fileID].values())
-    websockets.broadcast(connections, message) # 只向有编辑权限的用户转发消息, 应该没问题?
+    ws_set = set(FILES[fileID].values())
+    read_only_set = READ_ONLY[fileID]
+    websockets.broadcast(set.union(ws_set, read_only_set), message) 
 
 
 
@@ -54,9 +55,11 @@ async def unknown(websocket):
                 await websocket.send(json.dumps({'result': 0, 'message': '已连接到同步编辑服务'}))
                 fileID = data['fileID']
                 userID = data['userID']
+                if fileID not in FILES:
+                    FILES[fileID] = {}
+                if fileID not in READ_ONLY:
+                    READ_ONLY[fileID] = set()
                 if userID != -1:  # 编辑用户
-                    if fileID not in FILES:
-                        FILES[fileID] = {}
                     FILES[fileID][userID] = websocket
                     for theirID in FILES[fileID]: # 将此前存在的用户告知新用户
                         await websocket.send(json.dumps({
@@ -65,8 +68,6 @@ async def unknown(websocket):
                             'fileID': fileID,
                         }))
                 else:  # 只读用户
-                    if fileID not in READ_ONLY:
-                        READ_ONLY[fileID] = set()
                     READ_ONLY[fileID].add(websocket)
             elif data['operation'] == 'leave':  # 断开连接
                 leave(userID, fileID)
@@ -95,10 +96,15 @@ async def heartbeat():
         for file in FILES.values():
             for ws in file.values():
                 ws_set.add(ws)
+        read_only_set = set()
+        for xx_set in READ_ONLY.values():
+            for ws in xx_set:
+                read_only_set.add(ws)
         message = json.dumps({'operation': 'heartbeat', 'timestamp': str(time.time())})
-        websockets.broadcast(ws_set, message)
+        websockets.broadcast(set.union(ws_set, read_only_set), message)
+        # websocket.broadcast
         t = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        print("{}: 时间戳已广播到{}个客户端".format(t, len(ws_set)))
+        print("{}: 时间戳已广播到{}个可编辑客户端和{}个只读客户端".format(t, len(ws_set), len(read_only_set)))
         await asyncio.sleep(10)
 
 
