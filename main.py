@@ -12,6 +12,7 @@ import time, traceback
 
 FILES = {}
 
+READ_ONLY = {}
 
 async def broadcast_thread():
     print("?????????????????????????")
@@ -34,9 +35,11 @@ def leave(userID, fileID):
         'fileID': fileID,
     }
     message = json.dumps(data)
-    FILES[fileID].pop(userID)
+    if userID != -1:
+        FILES[fileID].pop(userID)
     connections = set(FILES[fileID].values())
-    websockets.broadcast(connections, message)
+    websockets.broadcast(connections, message) # 只向有编辑权限的用户转发消息, 应该没问题?
+
 
 
 async def unknown(websocket):
@@ -45,37 +48,44 @@ async def unknown(websocket):
     fileID = -1
     try:
         async for message in websocket:
-            # if 
             print("接收到: "+message)
             data = json.loads(message)
             if data['operation'] == 'register':  # 连接
                 await websocket.send(json.dumps({'result': 0, 'message': '已连接到同步编辑服务'}))
                 fileID = data['fileID']
                 userID = data['userID']
-                if fileID not in FILES:
-                    FILES[fileID] = {}
-                for theirID in FILES[fileID]: # 将此前存在的用户告知新用户
-                    await websocket.send(json.dumps({
-                        'operation': 'register',
-                        'userID': theirID,
-                        'fileID': fileID,
-                    }))
-                FILES[fileID][userID] = websocket
+                if userID != -1:  # 编辑用户
+                    if fileID not in FILES:
+                        FILES[fileID] = {}
+                    FILES[fileID][userID] = websocket
+                    for theirID in FILES[fileID]: # 将此前存在的用户告知新用户
+                        await websocket.send(json.dumps({
+                            'operation': 'register',
+                            'userID': theirID,
+                            'fileID': fileID,
+                        }))
+                else:  # 只读用户
+                    if fileID not in READ_ONLY:
+                        READ_ONLY[fileID] = set()
+                    READ_ONLY[fileID].add(websocket)
             elif data['operation'] == 'leave':  # 断开连接
                 leave(userID, fileID)
             data['timestamp'] = str(time.time())
             message = json.dumps(data)
             dic = FILES[fileID]
+            # 向编辑用户转发
             for that_userID in dic:
                 if that_userID != userID:
                     try:
                         await dic[that_userID].send(message)
                     except websockets.exceptions.ConnectionClosed as e:
                         print(e)
+            # 向只读用户转发
+            websockets.broadcast(READ_ONLY[fileID], message)
     except Exception as e:
         print(e)
-        # traceback.print_exc(e)
-    if userID != -1 and fileID != -1:
+    if fileID != -1:
+        READ_ONLY[fileID].discard(websocket)
         leave(userID, fileID) # 连接关闭时自动向所有编辑同一文件的用户发送leave消息
 
 
