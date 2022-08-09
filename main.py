@@ -6,7 +6,7 @@ import threading
 import websockets
 import websockets.exceptions
 import asyncio
-import time
+import time, traceback
 
 FILES = {}
 
@@ -38,34 +38,42 @@ def leave(userID, fileID):
 
 async def unknown(websocket):
     await websocket.send(json.dumps({'result': 0, 'message': '正在连接...'}))
-    myID = -1
+    userID = -1
     fileID = -1
-    async for message in websocket:
-        print("接收到: "+message)
-        data = json.loads(message)
-        fileID = data['fileID']
-        userID = data['userID']
-        myID = userID
-        if data['operation'] == 'register':  # 连接
-            await websocket.send(json.dumps({'result': 0, 'message': '已连接到同步编辑服务'}))
-            if fileID not in FILES:
-                FILES[fileID] = {}
+    try:
+        async for message in websocket:
+            # if 
+            print("接收到: "+message)
+            data = json.loads(message)
+            if data['operation'] == 'register':  # 连接
+                await websocket.send(json.dumps({'result': 0, 'message': '已连接到同步编辑服务'}))
+                fileID = data['fileID']
+                userID = data['userID']
+                if fileID not in FILES:
+                    FILES[fileID] = {}
+                for theirID in FILES[fileID]: # 将此前存在的用户告知新用户
+                    await websocket.send(json.dumps({
+                        'operation': 'register',
+                        'userID': theirID,
+                        'fileID': fileID,
+                    }))
+                FILES[fileID][userID] = websocket
+            elif data['operation'] == 'leave':  # 断开连接
+                leave(userID, fileID)
+            data['timestamp'] = str(time.time())
+            message = json.dumps(data)
             dic = FILES[fileID]
-            FILES[fileID][userID] = websocket
-        elif data['operation'] == 'leave':  # 断开连接
-            leave(userID, fileID)
-        data['timestamp'] = str(time.time())
-        message = json.dumps(data)
-        dic = FILES[data['fileID']]
-        for that_userID in dic:
-            if that_userID != data['userID']:
-                await dic[that_userID].send(message)
-                # except websockets.exceptions.ConnectionClosed:
-                #     leave(that_userID)
-        # if len(dic.values()) > 0:
-        #     print("向{}个用户发起转发".format(len(dic.values())))
-        #     await asyncio.wait([ws.send(message) for ws in dic.values()])
-    leave(myID, fileID)
+            for that_userID in dic:
+                if that_userID != userID:
+                    try:
+                        await dic[that_userID].send(message)
+                    except websockets.exceptions.ConnectionClosed:
+                        print(e)
+    except Exception as e:
+        print(e)
+        # traceback.print_exc(e)
+    if userID != -1 and fileID != -1:
+        leave(userID, fileID) # 连接关闭时自动向所有编辑同一文件的用户发送leave消息
 
 
 broadcast_thread()
