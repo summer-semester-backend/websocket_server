@@ -42,7 +42,6 @@ def leave(userID, fileID):
     websockets.broadcast(set.union(ws_set, read_only_set), message) 
 
 
-
 async def unknown(websocket):
     await websocket.send(json.dumps({'result': 0, 'message': '正在连接...'}))
     userID = -1
@@ -59,14 +58,20 @@ async def unknown(websocket):
                     FILES[fileID] = {}
                 if fileID not in READ_ONLY:
                     READ_ONLY[fileID] = set()
+                for theirID in FILES[fileID]: # 将此前存在的用户告知新用户
+                    await websocket.send(json.dumps({
+                        'operation': 'register',
+                        'userID': theirID,
+                        'fileID': fileID,
+                    }))
+                for their_ws in READ_ONLY[fileID]: # 将此前存在的只读用户也告知新用户
+                    await websocket.send(json.dumps({
+                        'operation': 'register',
+                        'userID': -1,
+                        'fileID': fileID,
+                    }))                    
                 if userID != -1:  # 编辑用户
                     FILES[fileID][userID] = websocket
-                    for theirID in FILES[fileID]: # 将此前存在的用户告知新用户
-                        await websocket.send(json.dumps({
-                            'operation': 'register',
-                            'userID': theirID,
-                            'fileID': fileID,
-                        }))
                 else:  # 只读用户
                     READ_ONLY[fileID].add(websocket)
             elif data['operation'] == 'leave':  # 断开连接
