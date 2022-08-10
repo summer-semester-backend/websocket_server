@@ -76,6 +76,8 @@ async def unknown(websocket):
                     READ_ONLY[fileID].add(websocket)
             elif data['operation'] == 'leave':  # 断开连接
                 leave(userID, fileID)
+            elif data['operation'] == 'closeShare':
+                READ_ONLY[fileID] = set()
             data['timestamp'] = str(time.time())
             message = json.dumps(data)
             dic = FILES[fileID]
